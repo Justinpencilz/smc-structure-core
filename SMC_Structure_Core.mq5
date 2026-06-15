@@ -417,9 +417,14 @@ void DetectOrderBlockOnBreak(int breakIdx, int pivotBarIdx, bool displacementBul
 
    int searchFrom = MathMax(pivotBarIdx, breakIdx - InpOB_MaxLookback);
    int obIdx = FindOppositeCandle(breakIdx, searchFrom, displacementBullish, open, close);
-   if(obIdx < 0) return;
+   if(obIdx < 0)
+     {
+      Print("SMC_DBG: No opposite candle found (", displacementBullish ? "bull" : "bear", ") break=", breakIdx, " pivot=", pivotBarIdx);
+      return;
+     }
 
    OB_Register(obIdx, displacementBullish, internalFlag, time, high, low);
+   Print("SMC_DBG: OB registered idx=", obIdx, " dir=", displacementBullish ? "bull" : "bear", " val=", DoubleToString(displacementBullish ? high[obIdx] : low[obIdx], 1));
   }
 
 //+------------------------------------------------------------------+
@@ -462,6 +467,7 @@ void CheckBreakerConversionOnBOS(int i, bool bullishBreak, bool internalFlag,
               {
                g_obBoxes[n].isBreaker = true;
                g_obBoxes[n].isBullish = false;   // convert to bearish BB
+               Print("SMC_DBG: Bearish BB created at ", DoubleToString(g_obBoxes[n].bottom, 1), " bar=", k);
                break;
               }
            }
@@ -478,6 +484,7 @@ void CheckBreakerConversionOnBOS(int i, bool bullishBreak, bool internalFlag,
               {
                g_obBoxes[n].isBreaker = true;
                g_obBoxes[n].isBullish = true;    // convert to bullish BB
+               Print("SMC_DBG: Bullish BB created at ", DoubleToString(g_obBoxes[n].top, 1), " bar=", k);
                break;
               }
            }

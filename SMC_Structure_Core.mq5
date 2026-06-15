@@ -103,6 +103,14 @@ input color  InpColorBearOB          = C'130,60,150';   // Bearish Order Block (
 input color  InpColorBullBB          = C'60,180,75';    // Bullish Breaker Block
 input color  InpColorBearBB          = C'200,60,60';    // Bearish Breaker Block
 
+input group "=== Premium / Discount Array ==="
+input bool   InpShowPDArray          = true;     // show Premium/Discount array levels
+input double InpPDRetracement        = 0.60;     // retracement % (0.60 = 60%)
+input int    InpSLBufferPoints       = 10;       // SL buffer in points
+input color  InpColorPremium         = C'255,180,180'; // premium zone color
+input color  InpColorDiscount        = C'180,220,180'; // discount zone color
+input color  InpColorPDLine          = C'100,100,100'; // PD level line color
+
 //+------------------------------------------------------------------+
 //| Constants                                                        |
 //+------------------------------------------------------------------+
@@ -792,6 +800,242 @@ void UpdateTrailingLines(datetime currentTime)
   }
 
 //+------------------------------------------------------------------+
+//| Premium / Discount Array Module                                   |
+//|                                                                  |
+//| Standalone module — does not touch any existing structure logic. |
+//| Uses the trailing extremes (Strong/Weak HL) and swing trend bias |
+//| to calculate PD array levels for trade entry signals.            |
+//|                                                                  |
+//| BULLISH TREND:                                                   |
+//|   StrongLow = trailing.bottom, WeakHigh = trailing.top           |
+//|   Range = WeakHigh - StrongLow                                   |
+//|   DiscountLevel = StrongLow + Range * InpPDRetracement            |
+//|   0.0 at WeakHigh, 1.0 at StrongLow                              |
+//|   BUY when price <= DiscountLevel                                 |
+//|                                                                  |
+//| BEARISH TREND:                                                   |
+//|   StrongHigh = trailing.top, WeakLow = trailing.bottom            |
+//|   Range = StrongHigh - WeakLow                                    |
+//|   PremiumLevel = WeakLow + Range * InpPDRetracement               |
+//|   0.0 at WeakLow, 1.0 at StrongHigh                               |
+//|   SELL when price >= PremiumLevel                                 |
+//+------------------------------------------------------------------+
+void UpdatePDArray(datetime currentTime, double currentClose)
+  {
+   if(!InpShowPDArray || !trailing.valid) return;
+
+   double level0, level1, levelRetrace;
+
+   // --- BULLISH TREND ---
+   if(swingTrendBias == TREND_BULLISH)
+     {
+      double strongLow  = trailing.bottom;
+      double weakHigh   = trailing.top;
+      double range      = weakHigh - strongLow;
+      if(range <= 0) return;
+
+      level0       = weakHigh;                         // 0.0
+      level1       = strongLow;                        // 1.0
+      levelRetrace = strongLow + range * InpPDRetracement; // 0.60
+
+      // Draw 0.0 line at WeakHigh
+      string n0 = "SMC_PD_00_LN";
+      if(ObjectFind(0, n0) < 0)
+         ObjectCreate(0, n0, OBJ_TREND, 0, trailing.lastTopTime, level0, currentTime, level0);
+      ObjectSetInteger(0, n0, OBJPROP_TIME,  0, trailing.lastTopTime);
+      ObjectSetDouble (0, n0, OBJPROP_PRICE, 0, level0);
+      ObjectSetInteger(0, n0, OBJPROP_TIME,  1, currentTime);
+      ObjectSetDouble (0, n0, OBJPROP_PRICE, 1, level0);
+      ObjectSetInteger(0, n0, OBJPROP_COLOR, InpColorPDLine);
+      ObjectSetInteger(0, n0, OBJPROP_STYLE, STYLE_SOLID);
+      ObjectSetInteger(0, n0, OBJPROP_WIDTH, 1);
+      ObjectSetInteger(0, n0, OBJPROP_RAY_LEFT,  false);
+      ObjectSetInteger(0, n0, OBJPROP_RAY_RIGHT, false);
+      ObjectSetInteger(0, n0, OBJPROP_SELECTABLE, false);
+      string l0 = "SMC_PD_00_LBL";
+      if(ObjectFind(0, l0) < 0)
+         ObjectCreate(0, l0, OBJ_TEXT, 0, currentTime, level0);
+      ObjectSetInteger(0, l0, OBJPROP_TIME,  0, currentTime);
+      ObjectSetDouble (0, l0, OBJPROP_PRICE, 0, level0);
+      ObjectSetString (0, l0, OBJPROP_TEXT, "0.0 (Weak High)");
+      ObjectSetInteger(0, l0, OBJPROP_COLOR, InpColorPDLine);
+      ObjectSetInteger(0, l0, OBJPROP_FONTSIZE, 7);
+      ObjectSetInteger(0, l0, OBJPROP_ANCHOR, ANCHOR_LEFT_LOWER);
+      ObjectSetInteger(0, l0, OBJPROP_SELECTABLE, false);
+
+      // Draw 1.0 line at StrongLow
+      string n1 = "SMC_PD_10_LN";
+      if(ObjectFind(0, n1) < 0)
+         ObjectCreate(0, n1, OBJ_TREND, 0, trailing.lastBottomTime, level1, currentTime, level1);
+      ObjectSetInteger(0, n1, OBJPROP_TIME,  0, trailing.lastBottomTime);
+      ObjectSetDouble (0, n1, OBJPROP_PRICE, 0, level1);
+      ObjectSetInteger(0, n1, OBJPROP_TIME,  1, currentTime);
+      ObjectSetDouble (0, n1, OBJPROP_PRICE, 1, level1);
+      ObjectSetInteger(0, n1, OBJPROP_COLOR, InpColorPDLine);
+      ObjectSetInteger(0, n1, OBJPROP_STYLE, STYLE_SOLID);
+      ObjectSetInteger(0, n1, OBJPROP_WIDTH, 1);
+      ObjectSetInteger(0, n1, OBJPROP_RAY_LEFT,  false);
+      ObjectSetInteger(0, n1, OBJPROP_RAY_RIGHT, false);
+      ObjectSetInteger(0, n1, OBJPROP_SELECTABLE, false);
+      string l1 = "SMC_PD_10_LBL";
+      if(ObjectFind(0, l1) < 0)
+         ObjectCreate(0, l1, OBJ_TEXT, 0, currentTime, level1);
+      ObjectSetInteger(0, l1, OBJPROP_TIME,  0, currentTime);
+      ObjectSetDouble (0, l1, OBJPROP_PRICE, 0, level1);
+      ObjectSetString (0, l1, OBJPROP_TEXT, "1.0 (Strong Low)");
+      ObjectSetInteger(0, l1, OBJPROP_COLOR, InpColorPDLine);
+      ObjectSetInteger(0, l1, OBJPROP_FONTSIZE, 7);
+      ObjectSetInteger(0, l1, OBJPROP_ANCHOR, ANCHOR_LEFT_UPPER);
+      ObjectSetInteger(0, l1, OBJPROP_SELECTABLE, false);
+
+      // Draw retracement level (0.60)
+      string nr = "SMC_PD_RT_LN";
+      if(ObjectFind(0, nr) < 0)
+         ObjectCreate(0, nr, OBJ_TREND, 0, trailing.lastBottomTime, levelRetrace, currentTime, levelRetrace);
+      ObjectSetInteger(0, nr, OBJPROP_TIME,  0, trailing.lastBottomTime);
+      ObjectSetDouble (0, nr, OBJPROP_PRICE, 0, levelRetrace);
+      ObjectSetInteger(0, nr, OBJPROP_TIME,  1, currentTime);
+      ObjectSetDouble (0, nr, OBJPROP_PRICE, 1, levelRetrace);
+      ObjectSetInteger(0, nr, OBJPROP_COLOR, InpColorDiscount);
+      ObjectSetInteger(0, nr, OBJPROP_STYLE, STYLE_DASH);
+      ObjectSetInteger(0, nr, OBJPROP_WIDTH, 1);
+      ObjectSetInteger(0, nr, OBJPROP_RAY_LEFT,  false);
+      ObjectSetInteger(0, nr, OBJPROP_RAY_RIGHT, false);
+      ObjectSetInteger(0, nr, OBJPROP_SELECTABLE, false);
+      string lr = "SMC_PD_RT_LBL";
+      if(ObjectFind(0, lr) < 0)
+         ObjectCreate(0, lr, OBJ_TEXT, 0, currentTime, levelRetrace);
+      ObjectSetInteger(0, lr, OBJPROP_TIME,  0, currentTime);
+      ObjectSetDouble (0, lr, OBJPROP_PRICE, 0, levelRetrace);
+      string rtLabel;
+      StringConcatenate(rtLabel, DoubleToString(InpPDRetracement * 100, 0), "% Discount");
+      ObjectSetString (0, lr, OBJPROP_TEXT, rtLabel);
+      ObjectSetInteger(0, lr, OBJPROP_COLOR, InpColorDiscount);
+      ObjectSetInteger(0, lr, OBJPROP_FONTSIZE, 7);
+      ObjectSetInteger(0, lr, OBJPROP_ANCHOR, ANCHOR_LEFT_UPPER);
+      ObjectSetInteger(0, lr, OBJPROP_SELECTABLE, false);
+
+      // Monitor: BUY signal when price reaches discount zone
+      if(currentClose <= levelRetrace)
+        {
+         double sl = level1 - InpSLBufferPoints * Point();
+         string sig = "SMC_PD_BUY_SIG";
+         if(ObjectFind(0, sig) < 0)
+            ObjectCreate(0, sig, OBJ_ARROW_BUY, 0, currentTime, currentClose);
+         ObjectSetInteger(0, sig, OBJPROP_TIME,  0, currentTime);
+         ObjectSetDouble (0, sig, OBJPROP_PRICE, 0, currentClose);
+         ObjectSetInteger(0, sig, OBJPROP_COLOR, clrGreen);
+         ObjectSetInteger(0, sig, OBJPROP_WIDTH, 2);
+         ObjectSetInteger(0, sig, OBJPROP_SELECTABLE, false);
+        }
+     }
+
+   // --- BEARISH TREND ---
+   if(swingTrendBias == TREND_BEARISH)
+     {
+      double strongHigh = trailing.top;
+      double weakLow    = trailing.bottom;
+      double range      = strongHigh - weakLow;
+      if(range <= 0) return;
+
+      level0       = weakLow;                          // 0.0
+      level1       = strongHigh;                       // 1.0
+      levelRetrace = weakLow + range * InpPDRetracement; // 0.60
+
+      // Draw 0.0 line at WeakLow
+      string n0 = "SMC_PD_00_LN";
+      if(ObjectFind(0, n0) < 0)
+         ObjectCreate(0, n0, OBJ_TREND, 0, trailing.lastBottomTime, level0, currentTime, level0);
+      ObjectSetInteger(0, n0, OBJPROP_TIME,  0, trailing.lastBottomTime);
+      ObjectSetDouble (0, n0, OBJPROP_PRICE, 0, level0);
+      ObjectSetInteger(0, n0, OBJPROP_TIME,  1, currentTime);
+      ObjectSetDouble (0, n0, OBJPROP_PRICE, 1, level0);
+      ObjectSetInteger(0, n0, OBJPROP_COLOR, InpColorPDLine);
+      ObjectSetInteger(0, n0, OBJPROP_STYLE, STYLE_SOLID);
+      ObjectSetInteger(0, n0, OBJPROP_WIDTH, 1);
+      ObjectSetInteger(0, n0, OBJPROP_RAY_LEFT,  false);
+      ObjectSetInteger(0, n0, OBJPROP_RAY_RIGHT, false);
+      ObjectSetInteger(0, n0, OBJPROP_SELECTABLE, false);
+      string l0 = "SMC_PD_00_LBL";
+      if(ObjectFind(0, l0) < 0)
+         ObjectCreate(0, l0, OBJ_TEXT, 0, currentTime, level0);
+      ObjectSetInteger(0, l0, OBJPROP_TIME,  0, currentTime);
+      ObjectSetDouble (0, l0, OBJPROP_PRICE, 0, level0);
+      ObjectSetString (0, l0, OBJPROP_TEXT, "0.0 (Weak Low)");
+      ObjectSetInteger(0, l0, OBJPROP_COLOR, InpColorPDLine);
+      ObjectSetInteger(0, l0, OBJPROP_FONTSIZE, 7);
+      ObjectSetInteger(0, l0, OBJPROP_ANCHOR, ANCHOR_LEFT_UPPER);
+      ObjectSetInteger(0, l0, OBJPROP_SELECTABLE, false);
+
+      // Draw 1.0 line at StrongHigh
+      string n1 = "SMC_PD_10_LN";
+      if(ObjectFind(0, n1) < 0)
+         ObjectCreate(0, n1, OBJ_TREND, 0, trailing.lastTopTime, level1, currentTime, level1);
+      ObjectSetInteger(0, n1, OBJPROP_TIME,  0, trailing.lastTopTime);
+      ObjectSetDouble (0, n1, OBJPROP_PRICE, 0, level1);
+      ObjectSetInteger(0, n1, OBJPROP_TIME,  1, currentTime);
+      ObjectSetDouble (0, n1, OBJPROP_PRICE, 1, level1);
+      ObjectSetInteger(0, n1, OBJPROP_COLOR, InpColorPDLine);
+      ObjectSetInteger(0, n1, OBJPROP_STYLE, STYLE_SOLID);
+      ObjectSetInteger(0, n1, OBJPROP_WIDTH, 1);
+      ObjectSetInteger(0, n1, OBJPROP_RAY_LEFT,  false);
+      ObjectSetInteger(0, n1, OBJPROP_RAY_RIGHT, false);
+      ObjectSetInteger(0, n1, OBJPROP_SELECTABLE, false);
+      string l1 = "SMC_PD_10_LBL";
+      if(ObjectFind(0, l1) < 0)
+         ObjectCreate(0, l1, OBJ_TEXT, 0, currentTime, level1);
+      ObjectSetInteger(0, l1, OBJPROP_TIME,  0, currentTime);
+      ObjectSetDouble (0, l1, OBJPROP_PRICE, 0, level1);
+      ObjectSetString (0, l1, OBJPROP_TEXT, "1.0 (Strong High)");
+      ObjectSetInteger(0, l1, OBJPROP_COLOR, InpColorPDLine);
+      ObjectSetInteger(0, l1, OBJPROP_FONTSIZE, 7);
+      ObjectSetInteger(0, l1, OBJPROP_ANCHOR, ANCHOR_LEFT_LOWER);
+      ObjectSetInteger(0, l1, OBJPROP_SELECTABLE, false);
+
+      // Draw retracement level (0.60)
+      string nr = "SMC_PD_RT_LN";
+      if(ObjectFind(0, nr) < 0)
+         ObjectCreate(0, nr, OBJ_TREND, 0, trailing.lastBottomTime, levelRetrace, currentTime, levelRetrace);
+      ObjectSetInteger(0, nr, OBJPROP_TIME,  0, trailing.lastBottomTime);
+      ObjectSetDouble (0, nr, OBJPROP_PRICE, 0, levelRetrace);
+      ObjectSetInteger(0, nr, OBJPROP_TIME,  1, currentTime);
+      ObjectSetDouble (0, nr, OBJPROP_PRICE, 1, levelRetrace);
+      ObjectSetInteger(0, nr, OBJPROP_COLOR, InpColorPremium);
+      ObjectSetInteger(0, nr, OBJPROP_STYLE, STYLE_DASH);
+      ObjectSetInteger(0, nr, OBJPROP_WIDTH, 1);
+      ObjectSetInteger(0, nr, OBJPROP_RAY_LEFT,  false);
+      ObjectSetInteger(0, nr, OBJPROP_RAY_RIGHT, false);
+      ObjectSetInteger(0, nr, OBJPROP_SELECTABLE, false);
+      string lr = "SMC_PD_RT_LBL";
+      if(ObjectFind(0, lr) < 0)
+         ObjectCreate(0, lr, OBJ_TEXT, 0, currentTime, levelRetrace);
+      ObjectSetInteger(0, lr, OBJPROP_TIME,  0, currentTime);
+      ObjectSetDouble (0, lr, OBJPROP_PRICE, 0, levelRetrace);
+      string rtLabel;
+      StringConcatenate(rtLabel, DoubleToString(InpPDRetracement * 100, 0), "% Premium");
+      ObjectSetString (0, lr, OBJPROP_TEXT, rtLabel);
+      ObjectSetInteger(0, lr, OBJPROP_COLOR, InpColorPremium);
+      ObjectSetInteger(0, lr, OBJPROP_FONTSIZE, 7);
+      ObjectSetInteger(0, lr, OBJPROP_ANCHOR, ANCHOR_LEFT_LOWER);
+      ObjectSetInteger(0, lr, OBJPROP_SELECTABLE, false);
+
+      // Monitor: SELL signal when price reaches premium zone
+      if(currentClose >= levelRetrace)
+        {
+         double sl = level1 + InpSLBufferPoints * Point();
+         string sig = "SMC_PD_SELL_SIG";
+         if(ObjectFind(0, sig) < 0)
+            ObjectCreate(0, sig, OBJ_ARROW_SELL, 0, currentTime, currentClose);
+         ObjectSetInteger(0, sig, OBJPROP_TIME,  0, currentTime);
+         ObjectSetDouble (0, sig, OBJPROP_PRICE, 0, currentClose);
+         ObjectSetInteger(0, sig, OBJPROP_COLOR, clrRed);
+         ObjectSetInteger(0, sig, OBJPROP_WIDTH, 2);
+         ObjectSetInteger(0, sig, OBJPROP_SELECTABLE, false);
+        }
+     }
+  }
+
+//+------------------------------------------------------------------+
 //| Pivot detection                                                  |
 //+------------------------------------------------------------------+
 void ProcessPivots(int i, int length, const datetime &time[],
@@ -1266,6 +1510,9 @@ int OnCalculate(const int rates_total,
          if(high[i] >= trailing.top)    { trailing.top    = high[i]; trailing.lastTopTime    = time[i]; }
          if(low[i]  <= trailing.bottom) { trailing.bottom = low[i];  trailing.lastBottomTime = time[i]; }
         }
+
+      // PD Array: calculate and draw Premium/Discount levels
+      UpdatePDArray(time[i], close[i]);
      }
 
    if(InpShowStrongWeak && trailing.valid)

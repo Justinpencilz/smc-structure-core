@@ -423,16 +423,20 @@ void DetectOrderBlockOnBreak(int breakIdx, int pivotBarIdx, bool displacementBul
   }
 
 //+------------------------------------------------------------------+
-//| Breaker Block conversion on BOS confirmation (rules 4,5,9)       |
+//| Breaker Block conversion on BOS/MSS confirmation (rules 4,5,9)   |
 //|                                                                  |
-//| Called from CheckStructureBreaks() on every BOS event after      |
-//| trend is confirmed. Scans stored OBs for counter-trend zones    |
-//| that have been broken through by price (at any bar since OB     |
-//| formation). If broken AND a valid BOS fires in the direction of |
-//| that break, converts OB → BB.                                    |
+//| Called from CheckStructureBreaks() on BOS events AND on CBOS/    |
+//| MSS confirmation events (the break that confirms the trend       |
+//| shift). Scans stored OBs for counter-trend zones that have been  |
+//| broken through by a candle CLOSE (Body Close Confirmation rule).  |
+//| If broken AND a valid BOS/MSS fires in that direction, converts  |
+//| OB → BB.                                                          |
 //|                                                                  |
-//| Requires a confirmed trend AND a BOS event to activate.          |
-//| No BOS → no Breaker Block.                                      |
+//| BB zone = full candle range (high-low) — entry includes wicks.   |
+//| Break confirmation = candle body close only — no wick breaks.    |
+//|                                                                  |
+//| Requires a confirmed trend AND a BOS/MSS event to activate.      |
+//| No BOS/MSS → no Breaker Block.                                    |
 //+------------------------------------------------------------------+
 void CheckBreakerConversionOnBOS(int i, bool bullishBreak, bool internalFlag,
                                   const double &close[], const double &high[], const double &low[])
@@ -447,27 +451,35 @@ void CheckBreakerConversionOnBOS(int i, bool bullishBreak, bool internalFlag,
       if(g_obBoxes[n].internal != internalFlag) continue;
       if(i <= g_obBoxes[n].obBarIndex) continue;
 
-      //--- Bearish confirmed trend + bearish BOS: check if price ever broke below bullish OB
+      //--- Bearish BB: bearish break in bearish trend, check bullish OBs broken below
       if(trendBias == TREND_BEARISH && !bullishBreak && g_obBoxes[n].isBullish)
         {
-         // Scan from OB formation to current bar for the lowest low
-         double lowestSinceOB = Lowest(low, g_obBoxes[n].obBarIndex, i);
-         if(lowestSinceOB < g_obBoxes[n].bottom)
+         // Scan bars from OB formation to current bar for a BODY CLOSE below OB.bottom
+         // (Body Close Confirmation — wick penetration is invalid)
+         for(int k = g_obBoxes[n].obBarIndex + 1; k <= i; k++)
            {
-            g_obBoxes[n].isBreaker = true;
-            g_obBoxes[n].isBullish = false;   // convert to bearish BB
+            if(close[k] < g_obBoxes[n].bottom)
+              {
+               g_obBoxes[n].isBreaker = true;
+               g_obBoxes[n].isBullish = false;   // convert to bearish BB
+               break;
+              }
            }
         }
 
-      //--- Bullish confirmed trend + bullish BOS: check if price ever broke above bearish OB
+      //--- Bullish BB: bullish break in bullish trend, check bearish OBs broken above
       if(trendBias == TREND_BULLISH && bullishBreak && !g_obBoxes[n].isBullish)
         {
-         // Scan from OB formation to current bar for the highest high
-         double highestSinceOB = Highest(high, g_obBoxes[n].obBarIndex, i);
-         if(highestSinceOB > g_obBoxes[n].top)
+         // Scan bars from OB formation to current bar for a BODY CLOSE above OB.top
+         // (Body Close Confirmation — wick penetration is invalid)
+         for(int k = g_obBoxes[n].obBarIndex + 1; k <= i; k++)
            {
-            g_obBoxes[n].isBreaker = true;
-            g_obBoxes[n].isBullish = true;    // convert to bullish BB
+            if(close[k] > g_obBoxes[n].top)
+              {
+               g_obBoxes[n].isBreaker = true;
+               g_obBoxes[n].isBullish = true;    // convert to bullish BB
+               break;
+              }
            }
         }
      }
@@ -1033,6 +1045,8 @@ void CheckStructureBreaks(int i, const datetime &time[], const double &open[], c
          // OB/BB module: bullish MSS -> last bearish candle before the
          // displacement that produced it = OB (rules 2,3)
          DetectOrderBlockOnBreak(i, pHigh.barIndex, true, internal, time, open, high, low, close);
+         // Check for Breaker Block conversion on this MSS/CBOS
+         CheckBreakerConversionOnBOS(i, true, internal, close, high, low);
          // Reset sequence
          seqState       = SEQ_NONE;
          pending.active = false;
@@ -1135,6 +1149,8 @@ void CheckStructureBreaks(int i, const datetime &time[], const double &open[], c
          // OB/BB module: bearish MSS -> last bullish candle before the
          // displacement that produced it = OB (rules 2,3)
          DetectOrderBlockOnBreak(i, pLow.barIndex, false, internal, time, open, high, low, close);
+         // Check for Breaker Block conversion on this MSS/CBOS
+         CheckBreakerConversionOnBOS(i, false, internal, close, high, low);
          // Reset sequence
          seqState       = SEQ_NONE;
          pending.active = false;

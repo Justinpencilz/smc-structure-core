@@ -105,8 +105,7 @@ input color  InpColorBearBB          = C'200,60,60';    // Bearish Breaker Block
 
 input group "=== Premium / Discount Array ==="
 input bool   InpShowPDArray          = true;     // show Premium/Discount array levels
-input double InpPDRetracement        = 0.60;     // retracement % (0.60 = 60%)
-input int    InpSLBufferPoints       = 10;       // SL buffer in points
+input double InpPDRetracement        = 0.40;     // retracement % (0.40 = 40%)
 input color  InpColorPremium         = C'255,180,180'; // premium zone color
 input color  InpColorDiscount        = C'180,220,180'; // discount zone color
 input color  InpColorPDLine          = C'100,100,100'; // PD level line color
@@ -812,6 +811,7 @@ void UpdateTrailingLines(datetime currentTime)
 //|   DiscountLevel = StrongLow + Range * InpPDRetracement            |
 //|   0.0 at WeakHigh, 1.0 at StrongLow                              |
 //|   BUY when price <= DiscountLevel                                 |
+//|   SL = swingLow pivot, TP = WeakHigh                             |
 //|                                                                  |
 //| BEARISH TREND:                                                   |
 //|   StrongHigh = trailing.top, WeakLow = trailing.bottom            |
@@ -819,6 +819,7 @@ void UpdateTrailingLines(datetime currentTime)
 //|   PremiumLevel = WeakLow + Range * InpPDRetracement               |
 //|   0.0 at WeakLow, 1.0 at StrongHigh                               |
 //|   SELL when price >= PremiumLevel                                 |
+//|   SL = swingHigh pivot, TP = WeakLow                             |
 //+------------------------------------------------------------------+
 void UpdatePDArray(datetime currentTime, double currentClose)
   {
@@ -836,7 +837,7 @@ void UpdatePDArray(datetime currentTime, double currentClose)
 
       level0       = weakHigh;                         // 0.0
       level1       = strongLow;                        // 1.0
-      levelRetrace = strongLow + range * InpPDRetracement; // 0.60
+      levelRetrace = strongLow + range * InpPDRetracement; // retracement level
 
       // Draw 0.0 line at WeakHigh
       string n0 = "SMC_PD_00_LN";
@@ -918,7 +919,8 @@ void UpdatePDArray(datetime currentTime, double currentClose)
       // Monitor: BUY signal when price reaches discount zone
       if(currentClose <= levelRetrace)
         {
-         double sl = level1 - InpSLBufferPoints * Point();
+         double sl = swingLow.valid ? swingLow.price : level1;
+         double tp = trailing.top;
          string sig = "SMC_PD_BUY_SIG";
          if(ObjectFind(0, sig) < 0)
             ObjectCreate(0, sig, OBJ_ARROW_BUY, 0, currentTime, currentClose);
@@ -940,7 +942,7 @@ void UpdatePDArray(datetime currentTime, double currentClose)
 
       level0       = weakLow;                          // 0.0
       level1       = strongHigh;                       // 1.0
-      levelRetrace = weakLow + range * InpPDRetracement; // 0.60
+      levelRetrace = weakLow + range * InpPDRetracement; // retracement level
 
       // Draw 0.0 line at WeakLow
       string n0 = "SMC_PD_00_LN";
@@ -1022,7 +1024,8 @@ void UpdatePDArray(datetime currentTime, double currentClose)
       // Monitor: SELL signal when price reaches premium zone
       if(currentClose >= levelRetrace)
         {
-         double sl = level1 + InpSLBufferPoints * Point();
+         double sl = swingHigh.valid ? swingHigh.price : level1;
+         double tp = trailing.bottom;
          string sig = "SMC_PD_SELL_SIG";
          if(ObjectFind(0, sig) < 0)
             ObjectCreate(0, sig, OBJ_ARROW_SELL, 0, currentTime, currentClose);
